@@ -45,10 +45,6 @@ public class TraceabilityService {
     private TVAsinRepository tvAsinRepository;
 
 
-    public TCleaningMovieEntity getSingleMovieByAsin(String asin) {
-        return cleaningMovieRepository.findByAsin(asin);
-    }
-
     /**
      * get all the movie version for the movie asin.
      *
@@ -58,27 +54,31 @@ public class TraceabilityService {
      * @since : 2021/12/11 1:25
      **/
     public MovieVersionDto getMovieVersion(String asin) {
-        //先找是否是多版本电影
-        List<TFatherAsinEntity> asinEntity = fatherAsinRepository.findAllByFatherAsin(asin);
         MovieVersionDto movieVersionDto = new MovieVersionDto();
-        List<TCleaningMovieEntity> cleaningMovieEntities = new ArrayList<>();
+        TConsolidationMovieEntity consolidationMovie = consolidationMovieRepository.findByAsin(asin);
+        if (consolidationMovie != null) {
+            movieVersionDto.setVersionCount(consolidationMovie.getAsinCount());
+            //寻找father_asin为这个asin的所有信息
+            List<TFatherAsinEntity> sonAsinList = fatherAsinRepository.findAllByFatherAsin(asin);
 
-        TCleaningMovieEntity fatherAsinMovie = getSingleMovieByAsin(asin);
-        if (fatherAsinMovie != null) {
-            cleaningMovieEntities.add(fatherAsinMovie);
-        }
-
-        if (asinEntity != null) {
-            for (TFatherAsinEntity son : asinEntity) {
-                TCleaningMovieEntity sonAsinMovie = getSingleMovieByAsin(son.getAsin());
-                if (sonAsinMovie != null) {
-                    cleaningMovieEntities.add(sonAsinMovie);
+            if (sonAsinList != null) {
+                List<String> sonAsins = new ArrayList<>();
+                for (TFatherAsinEntity son : sonAsinList) {
+                    sonAsins.add(son.getAsin());
                 }
+                sonAsins.add(asin);
+                List<TCleaningMovieEntity> cleaningMovieList = new ArrayList<>();
+                for (String sonAsin : sonAsins) {
+                    TCleaningMovieEntity cleaningMovie = cleaningMovieRepository.findByAsin(sonAsin);
+                    if (cleaningMovie != null) {
+                        cleaningMovieList.add(cleaningMovie);
+                    }
+                }
+                long commentCount = commentRepository.countAllByAsinIn(sonAsins);
+                movieVersionDto.setMovieList(cleaningMovieList);
+                movieVersionDto.setCommentCount(commentCount);
             }
         }
-
-        movieVersionDto.setVersionCount(cleaningMovieEntities.size());
-        movieVersionDto.setMovieList(cleaningMovieEntities);
         return movieVersionDto;
     }
 
@@ -96,8 +96,8 @@ public class TraceabilityService {
         return commentDataDto;
     }
 
-    public MissingMovieDto getMissingMovieAsinList(int currentPage, int pageSize){
-        Pageable pageable = PageRequest.of(currentPage,pageSize);
+    public MissingMovieDto getMissingMovieAsinList(int currentPage, int pageSize) {
+        Pageable pageable = PageRequest.of(currentPage, pageSize);
         Page<VMissingMovieTvEntity> missingMovieTvAsin = missingMovieTvRepository.findAll(pageable);
         int totalPage = missingMovieTvAsin.getTotalPages();
         long totalCount = missingMovieTvAsin.getTotalElements();
@@ -109,8 +109,8 @@ public class TraceabilityService {
         return missingMovieDto;
     }
 
-    public MovieTvAsinDto getMovieTvAsinList(int currentPage, int pageSize){
-        Pageable pageable = PageRequest.of(currentPage,pageSize);
+    public MovieTvAsinDto getMovieTvAsinList(int currentPage, int pageSize) {
+        Pageable pageable = PageRequest.of(currentPage, pageSize);
         Page<TMovieWithoutRemovingTvAsinEntity> movieTvAsin = movieTvRepository.findAll(pageable);
         int totalPage = movieTvAsin.getTotalPages();
         long totalCount = movieTvAsin.getTotalElements();
@@ -122,7 +122,7 @@ public class TraceabilityService {
         return movieTvAsinDto;
     }
 
-    public MovieDto getMovieList(int currentPage, int pageSize){
+    public MovieDto getMovieList(int currentPage, int pageSize) {
         Pageable pageable = PageRequest.of(currentPage, pageSize);
         Page<TCleaningMovieEntity> movie = cleaningMovieRepository.findAll(pageable);
         int totalPage = movie.getTotalPages();
@@ -135,13 +135,13 @@ public class TraceabilityService {
         return movieDto;
     }
 
-    public ConsolidationMovieDto getConsolidationMovieList(int currentPage, int pageSize, boolean conflict){
+    public ConsolidationMovieDto getConsolidationMovieList(int currentPage, int pageSize, boolean conflict) {
         Pageable pageable = PageRequest.of(currentPage, pageSize);
         Page<TConsolidationMovieEntity> consolidationMovie;
-        if(conflict){
-            consolidationMovie = consolidationMovieRepository.findAllByAsinCountGreaterThan(1,pageable);
-        }else{
-            consolidationMovie = consolidationMovieRepository.findAllByAsinCountEquals(1,pageable);
+        if (conflict) {
+            consolidationMovie = consolidationMovieRepository.findAllByAsinCountGreaterThan(1, pageable);
+        } else {
+            consolidationMovie = consolidationMovieRepository.findAllByAsinCountEquals(1, pageable);
         }
         int totalPage = consolidationMovie.getTotalPages();
         long totalCount = consolidationMovie.getTotalElements();
@@ -153,7 +153,7 @@ public class TraceabilityService {
         return consolidationMovieDto;
     }
 
-    public TvAsinDto getTvAsinList(int currentPage, int pageSize){
+    public TvAsinDto getTvAsinList(int currentPage, int pageSize) {
         Pageable pageable = PageRequest.of(currentPage, pageSize);
         Page<VTvAsinEntity> tvAsin = tvAsinRepository.findAll(pageable);
         int totalPage = tvAsin.getTotalPages();
@@ -166,7 +166,7 @@ public class TraceabilityService {
         return tvAsinDto;
     }
 
-    public TotalCountDto getTotalCount(){
+    public TotalCountDto getTotalCount() {
         TotalCountDto totalCountDto = new TotalCountDto();
         totalCountDto.setCommentCount(commentRepository.count());
         totalCountDto.setMovieTvAsinCount(movieTvRepository.count());
@@ -176,5 +176,20 @@ public class TraceabilityService {
         totalCountDto.setNoConflictConsolidationMovieCount(consolidationMovieRepository.countAllByAsinCountEquals(1));
         totalCountDto.setConflictConsolidationMovieCount(consolidationMovieRepository.countAllByAsinCountGreaterThan(1));
         return totalCountDto;
+    }
+
+    public ConsolidationMovieDto searchForTitle(String title, int currentPage, int pageSize) {
+        String curTitle = "%" + title + "%";
+        Pageable pageable = PageRequest.of(currentPage, pageSize);
+        Page<TConsolidationMovieEntity> consolidationMovies = consolidationMovieRepository.findAllByMovieTitleLike(curTitle, pageable);
+        ConsolidationMovieDto consolidationMovieDto = new ConsolidationMovieDto();
+        consolidationMovieDto.setTotalPage(0);
+        consolidationMovieDto.setTotalCount(0);
+        if (consolidationMovies != null) {
+            consolidationMovieDto.setTotalPage(consolidationMovies.getTotalPages());
+            consolidationMovieDto.setTotalCount(consolidationMovies.getTotalElements());
+            consolidationMovieDto.setConsolidationMovieList(consolidationMovies.toList());
+        }
+        return consolidationMovieDto;
     }
 }

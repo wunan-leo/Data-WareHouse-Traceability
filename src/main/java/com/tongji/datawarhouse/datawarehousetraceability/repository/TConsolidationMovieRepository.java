@@ -12,4 +12,5 @@ public interface TConsolidationMovieRepository extends JpaRepository<TConsolidat
     Page<TConsolidationMovieEntity> findAllByAsinCountEquals(Integer asinCount, Pageable pageable);
     long countAllByAsinCountEquals(Integer asinCount);
     long countAllByAsinCountGreaterThan(Integer asinCount);
+    Page<TConsolidationMovieEntity> findAllByMovieTitleLike(String title,Pageable pageable);
 }
